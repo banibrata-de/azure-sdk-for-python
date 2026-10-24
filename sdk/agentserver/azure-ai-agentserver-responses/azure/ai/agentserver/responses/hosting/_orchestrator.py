@@ -126,6 +126,7 @@ async def _iter_handler_with_request_context(
             user_id=platform_context.user_id_key,
             call_id=platform_context.call_id,
             session_id=agent_session_id,
+            original_subject=platform_context.original_subject,
         )
 
     handler_iterator = create_fn(parsed, context, cancellation_signal)
@@ -4386,6 +4387,10 @@ class _ResponseOrchestrator:
             (``TaskManagerNotInitialized``) is NOT raised — it is swallowed and
             handled via the in-process fallback (see above).
         """
+        if not (self._runtime_options.resilient_background or self._runtime_options.steerable_conversations):
+            record.execution_task = asyncio.create_task(fallback_runner())
+            return
+
         from ._resilient_orchestrator import (
             ResilientResponseOrchestrator,
         )  # pylint: disable=import-outside-toplevel
@@ -4445,8 +4450,8 @@ class _ResponseOrchestrator:
             # failure.
             logger.info(
                 "Resilient task subsystem not enabled for response %s; running handler "
-                "in-process (non-durable). Enable via set_resilient_tasks_enabled(True) "
-                "(or resilient_background) for crash recovery.",
+                "in-process (non-durable). Run the host lifespan to initialize "
+                "the requested Responses task runtime.",
                 ctx.response_id,
             )
             record.execution_task = asyncio.create_task(fallback_runner())
